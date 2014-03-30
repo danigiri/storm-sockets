@@ -16,6 +16,7 @@
 package cat.calidos.storm.task;
 
 import java.net.InetSocketAddress;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
@@ -46,41 +47,44 @@ import backtype.storm.tuple.Tuple;
  */
 public class SocketBolt implements IBolt {
 	private static final int	DEFAULT_CONNECT_TIMEOUT	= 12000;
+	
 	public static Logger LOG = LoggerFactory.getLogger(SocketBolt.class);
-	private String	_host;
+	private String _host;
 	private int	_port;
 	private Channel	_channel;
+	private Map _options;
 	private ClientBootstrap	_bootstrap;
+	private OutputCollector	_collector;
 
 	public SocketBolt(String host, int port) {
 		_host = host;
 		_port = port;
+		_options = new HashMap(2);
+		_options.put("tcpNoDelay", true);
+		_options.put("keepAlive", true);
 	}
-	
-	
-	
 	
 	public void prepare(Map stormConf, TopologyContext context,
 	        			final OutputCollector collector) {
-		// TODO: check thrown exceptions, if any
-		// TODO: check thread allocation, probably want to minimise on a Storm cluster
+		_collector = collector;
+		
+		// TODO: check if we have to handle thrown exceptions when connecting, if any
+		// TODO: double-check thread allocation, NIO is probably handling this asynchronously
 		ChannelFactory factory = new NioClientSocketChannelFactory(
 										Executors.newCachedThreadPool(),
 										Executors.newCachedThreadPool());
 		_bootstrap = new ClientBootstrap(factory);
 		
-	    //bootstrap.setPipelineFactory(new XXX());
+		_bootstrap.setPipelineFactory(new LineBasedPipelineFactory());
+	    
+		_bootstrap.setOptions(_options);
 		
-		//TODO: check parameters
-	    _bootstrap.setOption("tcpNoDelay", true);
-	    _bootstrap.setOption("keepAlive", true);
-	
 	    ChannelFuture future = _bootstrap.connect(new InetSocketAddress(_host, _port));
 	    
 	    int connectTimeout = DEFAULT_CONNECT_TIMEOUT;
         Object connectTimeoutConfig = stormConf.get(Config.NIMBUS_TASK_LAUNCH_SECS);
         if (connectTimeoutConfig != null) {
-        	connectTimeout = ((Number)connectTimeoutConfig).intValue()*1000;
+        	connectTimeout = ((Number)connectTimeoutConfig).intValue()*1000/2;
         }
         
 	    future.awaitUninterruptibly(connectTimeout);
@@ -91,12 +95,9 @@ public class SocketBolt implements IBolt {
 	    _channel = future.getChannel();  
 	}
 
-
-
-
-	public void execute(Tuple arg0) {
+	public void execute(Tuple input) {
 	
-		// TODO Auto-generated method stub
+		_channel.write(input.getValue(0)+ "\r\n");
 	
 	}
 
@@ -107,7 +108,7 @@ public class SocketBolt implements IBolt {
 		//TODO: flush all write futures?
 		//TODO: check close best practices and set await value
 		_channel.close().awaitUninterruptibly(1000);
-		bootstrap.releaseExternalResources();
+		_bootstrap.releaseExternalResources();
 	} 
         
 
