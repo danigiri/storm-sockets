@@ -22,12 +22,20 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 
 public class LineBasedClientHandler extends SimpleChannelUpstreamHandler {
 
+
+
+	private SocketBolt	_socketBolt;
+
+	public LineBasedClientHandler(SocketBolt socketBolt) {
+		_socketBolt = socketBolt;
+	}
+
 	/* (non-Javadoc)
 	* @see org.jboss.netty.channel.SimpleChannelUpstreamHandler#messageReceived(org.jboss.netty.channel.ChannelHandlerContext, org.jboss.netty.channel.MessageEvent)
 	*//////////////////////////////////////////////////////////////////////////////
 	@Override
 	public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-		// TODO Auto-generated method stub
+		_socketBolt.handleEmit((String)e.getMessage());
 	}
 
 

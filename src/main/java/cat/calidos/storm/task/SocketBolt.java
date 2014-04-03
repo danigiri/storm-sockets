@@ -32,7 +32,12 @@ import backtype.storm.Config;
 import backtype.storm.task.IBolt;
 import backtype.storm.task.OutputCollector;
 import backtype.storm.task.TopologyContext;
+import backtype.storm.topology.IRichBolt;
+import backtype.storm.topology.OutputFieldsDeclarer;
+import backtype.storm.topology.base.BaseRichBolt;
+import backtype.storm.tuple.Fields;
 import backtype.storm.tuple.Tuple;
+import backtype.storm.tuple.Values;
 
 /**
  * A bolt that connects to a process using sockets.
@@ -45,7 +50,9 @@ import backtype.storm.tuple.Tuple;
  * 
  * @author daniel giribet
  */
-public class SocketBolt implements IBolt {
+public class SocketBolt extends BaseRichBolt implements IBolt {
+	private static final String	CRLF	= "\r\n";
+
 	private static final int	DEFAULT_CONNECT_TIMEOUT	= 12000;
 	
 	public static Logger LOG = LoggerFactory.getLogger(SocketBolt.class);
@@ -55,6 +62,8 @@ public class SocketBolt implements IBolt {
 	private Map _options;
 	private ClientBootstrap	_bootstrap;
 	private OutputCollector	_collector;
+
+	private ChannelFuture	_writeFuture;
 
 	public SocketBolt(String host, int port) {
 		_host = host;
@@ -75,7 +84,7 @@ public class SocketBolt implements IBolt {
 										Executors.newCachedThreadPool());
 		_bootstrap = new ClientBootstrap(factory);
 		
-		_bootstrap.setPipelineFactory(new LineBasedPipelineFactory());
+		_bootstrap.setPipelineFactory(new LineBasedPipelineFactory(this));
 	    
 		_bootstrap.setOptions(_options);
 		
@@ -97,19 +106,29 @@ public class SocketBolt implements IBolt {
 
 	public void execute(Tuple input) {
 	
-		_channel.write(input.getValue(0)+ "\r\n");
-	
+		_writeFuture = _channel.write(input.getValue(0) + CRLF);
+			
 	}
 
-
-
+	public void handleEmit(String message) {
+	
+		_collector.emit(new Values(message));
+	}
 
 	public void cleanup() {
-		//TODO: flush all write futures?
-		//TODO: check close best practices and set await value
+
+//TODO: double check: it seems silly to wait for the last write when cleaning up, we can't really emit results
+//		if (_writeFuture != null) {
+//			
+//		}
+		//TODO: check close best practices and set appropriate await value
 		_channel.close().awaitUninterruptibly(1000);
 		_bootstrap.releaseExternalResources();
-	} 
-        
+	}
+
+	public void declareOutputFields(OutputFieldsDeclarer declarer) {
+		declarer.declare(new Fields("output"));
+	}
+ 
 
 }

@@ -16,20 +16,25 @@ private static final int	DEFAULT_FRAME_SIZE	= 16384;
 private static final StringDecoder	_stringDecoder = new StringDecoder();	// shareable
 private static final StringEncoder	_stringEncoder = new StringEncoder();	// shareable
 
-public ChannelPipeline getPipeline() throws Exception {
-	ChannelPipeline pipeline = Channels.pipeline();
-         
-	boolean stripDelimiter = true;
-    pipeline.addLast("framer", new DelimiterBasedFrameDecoder(
-    								DEFAULT_FRAME_SIZE, 
-        		 					stripDelimiter, 
-        		 					Delimiters.lineDelimiter()));
-    
-	pipeline.addLast("decoder", _stringDecoder);
-	pipeline.addLast("encoder", _stringEncoder);
-    pipeline.addLast("handler", new LineBasedClientHandler());
+private SocketBolt	_socketBolt;
+
+	public LineBasedPipelineFactory(SocketBolt socketBolt) {
+			_socketBolt = socketBolt;
+	}
+
+	public ChannelPipeline getPipeline() throws Exception {
+		ChannelPipeline pipeline = Channels.pipeline();
+	         
+		boolean stripDelimiter = true;
+	    pipeline.addLast("framer", new DelimiterBasedFrameDecoder(
+	    								DEFAULT_FRAME_SIZE, 
+	        		 					stripDelimiter, 
+	        		 					Delimiters.lineDelimiter()));    
+		pipeline.addLast("decoder", _stringDecoder);	// down
+		pipeline.addLast("encoder", _stringEncoder);
+	    pipeline.addLast("handler", new LineBasedClientHandler(_socketBolt));
   
-          return pipeline;
+	    return pipeline;
      }
 
 }
