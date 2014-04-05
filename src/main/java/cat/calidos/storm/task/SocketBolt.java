@@ -20,10 +20,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
+import org.apache.commons.lang.NullArgumentException;
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFactory;
 import org.jboss.netty.channel.ChannelFuture;
+import org.jboss.netty.channel.ChannelPipelineFactory;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +34,6 @@ import backtype.storm.Config;
 import backtype.storm.task.IBolt;
 import backtype.storm.task.OutputCollector;
 import backtype.storm.task.TopologyContext;
-import backtype.storm.topology.IRichBolt;
 import backtype.storm.topology.OutputFieldsDeclarer;
 import backtype.storm.topology.base.BaseRichBolt;
 import backtype.storm.tuple.Fields;
@@ -46,7 +47,7 @@ import backtype.storm.tuple.Values;
  * cluster nodes</p>
  * 
  * <p>When creating topologies using the Java API, subclass this bot and implement
- * the IRichBolt interface. TODO: establish subclassing and protocol interfaces if needed
+ * the IRichBolt interface.
  * 
  * @author daniel giribet
  */
@@ -59,33 +60,44 @@ public class SocketBolt extends BaseRichBolt implements IBolt {
 	private String _host;
 	private int	_port;
 	private Channel	_channel;
-	private Map _options;
+	private Map<String, Object> _options;
 	private ClientBootstrap	_bootstrap;
 	private OutputCollector	_collector;
-
 	private ChannelFuture	_writeFuture;
+	private ChannelPipelineFactory	_pipelineFactory;
 
 	public SocketBolt(String host, int port) {
 		_host = host;
 		_port = port;
-		_options = new HashMap(2);
-		_options.put("tcpNoDelay", true);
-		_options.put("keepAlive", true);
+		_options = new HashMap<String,Object>();
+	}
+	
+	public SocketBolt(String host, int port, Map<String, Object> bootstrapOptions) {
+		this(host, port);
+		if (bootstrapOptions != null) {
+			_options.putAll(bootstrapOptions);
+		}
+	}
+	
+	public SocketBolt(String host, int port, Map<String, Object> options, ChannelPipelineFactory factory) {
+		this(host, port, options);
+		if (factory==null) {
+			throw new NullArgumentException("called constructor with null ChannelPipelineFactory");
+		}
+		_pipelineFactory = factory;
 	}
 	
 	public void prepare(Map stormConf, TopologyContext context,
 	        			final OutputCollector collector) {
 		_collector = collector;
-		
-		// TODO: check if we have to handle thrown exceptions when connecting, if any
-		// TODO: double-check thread allocation, NIO is probably handling this asynchronously
 		ChannelFactory factory = new NioClientSocketChannelFactory(
 										Executors.newCachedThreadPool(),
 										Executors.newCachedThreadPool());
 		_bootstrap = new ClientBootstrap(factory);
-		
-		_bootstrap.setPipelineFactory(new LineBasedPipelineFactory(this));
-	    
+		if (_pipelineFactory==null) {
+			_pipelineFactory = new LineBasedPipelineFactory(this);
+		}
+		_bootstrap.setPipelineFactory(_pipelineFactory);
 		_bootstrap.setOptions(_options);
 		
 	    ChannelFuture future = _bootstrap.connect(new InetSocketAddress(_host, _port));
@@ -105,24 +117,24 @@ public class SocketBolt extends BaseRichBolt implements IBolt {
 	}
 
 	public void execute(Tuple input) {
-	
-		_writeFuture = _channel.write(input.getValue(0) + CRLF);
-			
+		//TODO: handle write failures gracefully
+		String line = input.getString(0);
+		LOG.info("Execute: line="+line);
+		_writeFuture = _channel.write(line + CRLF);
 	}
 
 	public void handleEmit(String message) {
-	
+		LOG.info("handleEmit: message="+message);
 		_collector.emit(new Values(message));
 	}
 
 	public void cleanup() {
 
-//TODO: double check: it seems silly to wait for the last write when cleaning up, we can't really emit results
 //		if (_writeFuture != null) {
-//			
+//			_writeFuture.awaitUninterruptibly(10);
 //		}
 		//TODO: check close best practices and set appropriate await value
-		_channel.close().awaitUninterruptibly(1000);
+		_channel.close().awaitUninterruptibly(10);
 		_bootstrap.releaseExternalResources();
 	}
 
