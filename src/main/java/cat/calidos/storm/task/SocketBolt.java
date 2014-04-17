@@ -20,7 +20,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
 
-import org.apache.commons.lang.NullArgumentException;
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFactory;
@@ -62,10 +61,9 @@ public class SocketBolt extends BaseRichBolt implements IBolt {
 	private Channel	_channel;
 	private Map<String, Object> _options;
 	private ClientBootstrap	_bootstrap;
-	private OutputCollector	_collector;
+	protected OutputCollector	_collector;
 	private ChannelFuture	_writeFuture;
-	private ChannelPipelineFactory	_pipelineFactory;
-
+	
 	public SocketBolt(String host, int port) {
 		_host = host;
 		_port = port;
@@ -78,13 +76,9 @@ public class SocketBolt extends BaseRichBolt implements IBolt {
 			_options.putAll(bootstrapOptions);
 		}
 	}
-	
-	public SocketBolt(String host, int port, Map<String, Object> options, ChannelPipelineFactory factory) {
-		this(host, port, options);
-		if (factory==null) {
-			throw new NullArgumentException("called constructor with null ChannelPipelineFactory");
-		}
-		_pipelineFactory = factory;
+		
+	public ChannelPipelineFactory getPipelineFactory() {	
+		return  new LineBasedPipelineFactory(this);
 	}
 	
 	public void prepare(Map stormConf, TopologyContext context,
@@ -94,10 +88,8 @@ public class SocketBolt extends BaseRichBolt implements IBolt {
 										Executors.newCachedThreadPool(),
 										Executors.newCachedThreadPool());
 		_bootstrap = new ClientBootstrap(factory);
-		if (_pipelineFactory==null) {
-			_pipelineFactory = new LineBasedPipelineFactory(this);
-		}
-		_bootstrap.setPipelineFactory(_pipelineFactory);
+		
+		_bootstrap.setPipelineFactory(getPipelineFactory());
 		_bootstrap.setOptions(_options);
 		
 	    ChannelFuture future = _bootstrap.connect(new InetSocketAddress(_host, _port));
